@@ -34,7 +34,7 @@ pub fn format(findings: &[Finding]) -> Result<String> {
                 "driver": {
                     "name": "netinject",
                     "version": env!("CARGO_PKG_VERSION"),
-                    "informationUri": "https://github.com/user/netinject",
+                    "informationUri": "https://github.com/QaidVoid/netinject",
                     "rules": []
                 }
             },
