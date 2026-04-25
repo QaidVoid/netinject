@@ -9,7 +9,7 @@ pub async fn run(cli: &Cli, session_id: &str, modify: Option<&Vec<String>>) -> R
     let store = helpers::open_session_store(&home_dir)?;
 
     // Resolve session
-    let sid = resolve_session(&store, session_id)
+    let sid = helpers::resolve_session_id(&store, session_id)
         .ok_or_else(|| anyhow::anyhow!("session '{session_id}' not found"))?;
     let session = store.get_session(sid)?;
     let findings = store.get_findings(sid)?;
@@ -75,7 +75,7 @@ pub async fn run(cli: &Cli, session_id: &str, modify: Option<&Vec<String>>) -> R
 
         match result {
             Ok(resp) => {
-                let body_hash = sha256_hex(&resp.body);
+                let body_hash = helpers::sha256_hex(&resp.body);
                 let header_list: Vec<String> = resp
                     .headers
                     .iter()
@@ -234,35 +234,5 @@ fn extract_response(resp: http::Response<ureq::Body>) -> ReplayResponse {
         status,
         headers,
         body,
-    }
-}
-
-/// SHA-256 hex digest.
-fn sha256_hex(data: &str) -> String {
-    use std::fmt::Write;
-    let hash = <sha2::Sha256 as sha2::Digest>::digest(data.as_bytes());
-    hash.iter().fold(String::new(), |mut s, b| {
-        write!(s, "{b:02x}").unwrap();
-        s
-    })
-}
-
-/// Resolve a session ID that may be a short prefix.
-fn resolve_session(store: &crate::session::store::SessionStore, id: &str) -> Option<uuid::Uuid> {
-    if let Ok(uuid) = uuid::Uuid::parse_str(id)
-        && store.get_session(uuid).is_ok()
-    {
-        return Some(uuid);
-    }
-
-    let sessions = store.list_sessions().ok()?;
-    let matches: Vec<_> = sessions
-        .iter()
-        .filter(|s| s.id.to_string().starts_with(id))
-        .collect();
-
-    match matches.len() {
-        1 => Some(matches[0].id),
-        _ => None,
     }
 }

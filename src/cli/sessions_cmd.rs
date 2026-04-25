@@ -37,7 +37,7 @@ pub async fn run(cli: &Cli, subcommand: &SessionCommands) -> Result<()> {
             let home_dir = helpers::ensure_home_dir()?;
             let store = helpers::open_session_store(&home_dir)?;
 
-            let session_id = resolve_session_id(&store, id)
+            let session_id = helpers::resolve_session_id(&store, id)
                 .ok_or_else(|| anyhow::anyhow!("session '{id}' not found"))?;
             let session = store.get_session(session_id)?;
             let findings = store.get_findings(session_id)?;
@@ -71,9 +71,9 @@ pub async fn run(cli: &Cli, subcommand: &SessionCommands) -> Result<()> {
             let home_dir = helpers::ensure_home_dir()?;
             let store = helpers::open_session_store(&home_dir)?;
 
-            let sid_a = resolve_session_id(&store, id_a)
+            let sid_a = helpers::resolve_session_id(&store, id_a)
                 .ok_or_else(|| anyhow::anyhow!("session '{id_a}' not found"))?;
-            let sid_b = resolve_session_id(&store, id_b)
+            let sid_b = helpers::resolve_session_id(&store, id_b)
                 .ok_or_else(|| anyhow::anyhow!("session '{id_b}' not found"))?;
 
             let findings_a = store.get_findings(sid_a)?;
@@ -127,7 +127,7 @@ pub async fn run(cli: &Cli, subcommand: &SessionCommands) -> Result<()> {
             let home_dir = helpers::ensure_home_dir()?;
             let store = helpers::open_session_store(&home_dir)?;
 
-            let session_id = resolve_session_id(&store, id)
+            let session_id = helpers::resolve_session_id(&store, id)
                 .ok_or_else(|| anyhow::anyhow!("session '{id}' not found"))?;
             let findings = store.get_findings(session_id)?;
 
@@ -150,30 +150,4 @@ pub async fn run(cli: &Cli, subcommand: &SessionCommands) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// Resolve a session ID that may be a short prefix (8 chars) to a full UUID.
-fn resolve_session_id(store: &crate::session::store::SessionStore, id: &str) -> Option<uuid::Uuid> {
-    // Try parsing as full UUID first
-    if let Ok(uuid) = uuid::Uuid::parse_str(id)
-        && store.get_session(uuid).is_ok()
-    {
-        return Some(uuid);
-    }
-
-    // Try matching as a prefix
-    let sessions = store.list_sessions().ok()?;
-    let matches: Vec<_> = sessions
-        .iter()
-        .filter(|s| s.id.to_string().starts_with(id))
-        .collect();
-
-    match matches.len() {
-        1 => Some(matches[0].id),
-        0 => None,
-        _ => {
-            tracing::warn!("ambiguous session prefix '{id}', matches multiple sessions");
-            None
-        }
-    }
 }

@@ -22,7 +22,8 @@ pub async fn run(cli: &Cli, against: Option<&str>, paths: Option<&str>) -> Resul
 
     // Load baseline (most recent, or specified by --against)
     let baseline = if let Some(id) = against {
-        resolve_baseline(&store, id).ok_or_else(|| anyhow::anyhow!("baseline '{id}' not found"))?
+        helpers::resolve_baseline(&store, id)
+            .ok_or_else(|| anyhow::anyhow!("baseline '{id}' not found"))?
     } else {
         let baselines = store.list_baselines()?;
         baselines.into_iter().next().ok_or_else(|| {
@@ -315,28 +316,5 @@ fn parse_diff_severity(s: &str) -> DiffSeverity {
         "breaking" => DiffSeverity::Breaking,
         "warning" => DiffSeverity::Warning,
         _ => DiffSeverity::Info,
-    }
-}
-
-/// Resolve a baseline ID (full or short prefix).
-fn resolve_baseline(
-    store: &crate::session::store::SessionStore,
-    id: &str,
-) -> Option<crate::baseline::BaselineSnapshot> {
-    if let Ok(uuid) = uuid::Uuid::parse_str(id)
-        && let Ok(b) = store.get_baseline(uuid)
-    {
-        return Some(b);
-    }
-
-    let baselines = store.list_baselines().ok()?;
-    let matches: Vec<_> = baselines
-        .into_iter()
-        .filter(|b| b.id.to_string().starts_with(id))
-        .collect();
-
-    match matches.len() {
-        1 => Some(matches.into_iter().next().unwrap()),
-        _ => None,
     }
 }

@@ -94,7 +94,7 @@ async fn capture(cli: &Cli) -> Result<()> {
         .as_deref()
         .map(|path| {
             let content = std::fs::read_to_string(path).unwrap_or_default();
-            sha256_hex(&content)
+            helpers::sha256_hex(&content)
         })
         .unwrap_or_default();
 
@@ -149,9 +149,9 @@ fn diff(_cli: &Cli, id_a: &str, id_b: &str) -> Result<()> {
     let home_dir = helpers::ensure_home_dir()?;
     let store = helpers::open_session_store(&home_dir)?;
 
-    let baseline_a = resolve_baseline(&store, id_a)
+    let baseline_a = helpers::resolve_baseline(&store, id_a)
         .ok_or_else(|| anyhow::anyhow!("baseline '{id_a}' not found"))?;
-    let baseline_b = resolve_baseline(&store, id_b)
+    let baseline_b = helpers::resolve_baseline(&store, id_b)
         .ok_or_else(|| anyhow::anyhow!("baseline '{id_b}' not found"))?;
 
     println!(
@@ -333,10 +333,10 @@ pub fn probe_endpoint_internal(
     // Read body and hash it
     let mut body = String::new();
     let _ = resp.into_body().into_reader().read_to_string(&mut body);
-    let body_hash = sha256_hex(&body);
+    let body_hash = helpers::sha256_hex(&body);
 
     // Simple schema hash: hash of the body structure (strip values from JSON)
-    let body_schema_hash = schema_hash(&body);
+    let body_schema_hash = helpers::schema_hash(&body);
 
     Ok(BaselineEntry {
         method: method.to_string(),
@@ -347,72 +347,4 @@ pub fn probe_endpoint_internal(
         body_schema_hash: Some(body_schema_hash),
         response_time_ms,
     })
-}
-
-/// SHA-256 hex digest of a string.
-fn sha256_hex(data: &str) -> String {
-    use std::fmt::Write;
-    let hash = <sha2::Sha256 as sha2::Digest>::digest(data.as_bytes());
-    hash.iter().fold(String::new(), |mut s, b| {
-        write!(s, "{b:02x}").unwrap();
-        s
-    })
-}
-
-/// Best-effort schema hash: for JSON bodies, normalize values to produce a structural hash.
-fn schema_hash(body: &str) -> String {
-    // Try parsing as JSON and replacing all values with null to get structural hash
-    if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(body) {
-        normalize_json_values(&mut val);
-        sha256_hex(&serde_json::to_string(&val).unwrap_or_default())
-    } else {
-        sha256_hex(body)
-    }
-}
-
-/// Recursively replace JSON primitive values with null, keeping structure.
-fn normalize_json_values(val: &mut serde_json::Value) {
-    match val {
-        serde_json::Value::Object(map) => {
-            for v in map.values_mut() {
-                normalize_json_values(v);
-            }
-        }
-        serde_json::Value::Array(arr) => {
-            // Only keep the structure of the first element (if any)
-            if let Some(first) = arr.first_mut() {
-                normalize_json_values(first);
-            }
-            arr.truncate(1);
-        }
-        serde_json::Value::String(_)
-        | serde_json::Value::Number(_)
-        | serde_json::Value::Bool(_) => {
-            *val = serde_json::Value::Null;
-        }
-        serde_json::Value::Null => {}
-    }
-}
-
-/// Resolve a baseline ID (full or short prefix).
-fn resolve_baseline(
-    store: &crate::session::store::SessionStore,
-    id: &str,
-) -> Option<BaselineSnapshot> {
-    if let Ok(uuid) = uuid::Uuid::parse_str(id)
-        && let Ok(b) = store.get_baseline(uuid)
-    {
-        return Some(b);
-    }
-
-    let baselines = store.list_baselines().ok()?;
-    let matches: Vec<_> = baselines
-        .into_iter()
-        .filter(|b| b.id.to_string().starts_with(id))
-        .collect();
-
-    match matches.len() {
-        1 => Some(matches.into_iter().next().unwrap()),
-        _ => None,
-    }
 }
