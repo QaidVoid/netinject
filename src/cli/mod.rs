@@ -2,6 +2,7 @@ pub mod args;
 pub mod baseline_cmd;
 pub mod check_cmd;
 pub mod fuzz_cmd;
+pub mod helpers;
 pub mod init_cmd;
 pub mod recon_cmd;
 pub mod regress_cmd;
