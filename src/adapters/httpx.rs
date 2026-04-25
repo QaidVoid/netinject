@@ -10,34 +10,22 @@ pub struct HttpxAdapter;
 
 /// httpx JSON output structure (one JSON object per line).
 /// We only parse the fields we care about.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 #[allow(dead_code)]
 struct HttpxResult {
-    #[serde(default)]
     url: String,
-    #[serde(default)]
     input: String,
-    #[serde(default)]
     status_code: u16,
-    #[serde(default)]
     content_length: u64,
-    #[serde(default)]
     title: String,
-    #[serde(default)]
     webserver: String,
-    #[serde(default)]
     tech: Vec<String>,
-    #[serde(default)]
     method: String,
-    #[serde(default)]
     content_type: String,
-    #[serde(default)]
     host: String,
-    #[serde(default)]
     host_ip: String,
-    #[serde(default)]
     failed: bool,
-    #[serde(default)]
     time: String,
 }
 

@@ -16,40 +16,30 @@ pub enum ConfigError {
 
 /// Resolved application configuration, merged from all sources.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppConfig {
-    #[serde(default)]
     pub project: ProjectConfig,
-    #[serde(default)]
     pub scope: ScopeConfig,
-    #[serde(default)]
     pub adapters: AdapterConfigs,
-    #[serde(default)]
     pub auth: Vec<AuthProfile>,
-    #[serde(default)]
     pub pipeline: Vec<PipelineConfig>,
-    #[serde(default)]
     pub regression: RegressionConfig,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProjectConfig {
-    #[serde(default)]
     pub name: Option<String>,
-    #[serde(default)]
     pub target: Option<String>,
-    #[serde(default)]
     pub spec: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ScopeConfig {
-    #[serde(default)]
     pub include: Vec<String>,
-    #[serde(default)]
     pub exclude: Vec<String>,
-    #[serde(default = "default_max_rate")]
     pub max_rate: u32,
-    #[serde(default = "default_max_concurrent")]
     pub max_concurrent: u32,
 }
 
@@ -58,63 +48,47 @@ impl Default for ScopeConfig {
         Self {
             include: vec![],
             exclude: vec![],
-            max_rate: default_max_rate(),
-            max_concurrent: default_max_concurrent(),
+            max_rate: 50,
+            max_concurrent: 10,
         }
     }
 }
 
-fn default_max_rate() -> u32 {
-    50
-}
-fn default_max_concurrent() -> u32 {
-    10
-}
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AdapterConfigs {
-    #[serde(default)]
     pub ffuf: FfufConfig,
-    #[serde(default)]
     pub nuclei: NucleiConfig,
-    #[serde(default)]
     pub httpx: HttpxConfig,
-    #[serde(default)]
     pub sqlmap: SqlmapConfig,
-    #[serde(default)]
     pub mitmproxy: MitmproxyConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FfufConfig {
-    #[serde(default = "default_wordlist")]
     pub wordlist: String,
-    #[serde(default = "default_threads")]
     pub threads: u32,
-    #[serde(default = "default_timeout")]
     pub timeout: u32,
-    #[serde(default)]
     pub recursive: bool,
 }
 
 impl Default for FfufConfig {
     fn default() -> Self {
         Self {
-            wordlist: default_wordlist(),
-            threads: default_threads(),
-            timeout: default_timeout(),
+            wordlist: "/usr/share/seclists/Discovery/Web-Content/common.txt".into(),
+            threads: 40,
+            timeout: 10,
             recursive: false,
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NucleiConfig {
-    #[serde(default)]
     pub templates: Vec<String>,
-    #[serde(default)]
     pub severity: Vec<String>,
-    #[serde(default = "default_nuclei_rate")]
     pub rate_limit: u32,
 }
 
@@ -123,29 +97,23 @@ impl Default for NucleiConfig {
         Self {
             templates: vec![],
             severity: vec![],
-            rate_limit: default_nuclei_rate(),
+            rate_limit: 100,
         }
     }
 }
 
-fn default_nuclei_rate() -> u32 {
-    100
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct HttpxConfig {
-    #[serde(default = "default_threads")]
     pub threads: u32,
-    #[serde(default = "default_nuclei_rate")]
     pub rate_limit: u32,
-    #[serde(default)]
     pub tech_detect: bool,
 }
 
 impl Default for HttpxConfig {
     fn default() -> Self {
         Self {
-            threads: default_threads(),
+            threads: 40,
             rate_limit: 150,
             tech_detect: false,
         }
@@ -153,70 +121,39 @@ impl Default for HttpxConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SqlmapConfig {
-    #[serde(default = "default_sqlmap_level")]
     pub level: u32,
-    #[serde(default = "default_sqlmap_risk")]
     pub risk: u32,
-    #[serde(default = "default_bool_true")]
     pub batch: bool,
 }
 
 impl Default for SqlmapConfig {
     fn default() -> Self {
         Self {
-            level: default_sqlmap_level(),
-            risk: default_sqlmap_risk(),
+            level: 3,
+            risk: 2,
             batch: true,
         }
     }
 }
 
-fn default_sqlmap_level() -> u32 {
-    3
-}
-fn default_sqlmap_risk() -> u32 {
-    2
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MitmproxyConfig {
-    #[serde(default = "default_listen_host")]
     pub listen_host: String,
-    #[serde(default = "default_listen_port")]
     pub listen_port: u16,
-    #[serde(default)]
     pub upstream_proxy: String,
 }
 
 impl Default for MitmproxyConfig {
     fn default() -> Self {
         Self {
-            listen_host: default_listen_host(),
-            listen_port: default_listen_port(),
+            listen_host: "127.0.0.1".into(),
+            listen_port: 8080,
             upstream_proxy: String::new(),
         }
     }
-}
-
-fn default_listen_host() -> String {
-    "127.0.0.1".into()
-}
-fn default_listen_port() -> u16 {
-    8080
-}
-
-fn default_wordlist() -> String {
-    "/usr/share/seclists/Discovery/Web-Content/common.txt".into()
-}
-fn default_threads() -> u32 {
-    40
-}
-fn default_timeout() -> u32 {
-    10
-}
-fn default_bool_true() -> bool {
-    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -238,34 +175,26 @@ pub struct PipelineStep {
     pub config: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RegressionConfig {
-    #[serde(default = "default_regression_status")]
     pub status_code_change: String,
-    #[serde(default = "default_regression_schema")]
     pub schema_drift: String,
-    #[serde(default = "default_regression_timing")]
     pub timing_threshold: f64,
-    #[serde(default = "default_regression_header")]
     pub header_change: String,
-    #[serde(default = "default_regression_body")]
     pub body_hash_change: String,
 }
 
-fn default_regression_status() -> String {
-    "breaking".into()
-}
-fn default_regression_schema() -> String {
-    "breaking".into()
-}
-fn default_regression_timing() -> f64 {
-    2.0
-}
-fn default_regression_header() -> String {
-    "info".into()
-}
-fn default_regression_body() -> String {
-    "warning".into()
+impl Default for RegressionConfig {
+    fn default() -> Self {
+        Self {
+            status_code_change: "breaking".into(),
+            schema_drift: "breaking".into(),
+            timing_threshold: 2.0,
+            header_change: "info".into(),
+            body_hash_change: "warning".into(),
+        }
+    }
 }
 
 /// Load config from a TOML file.

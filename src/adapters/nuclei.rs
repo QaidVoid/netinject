@@ -9,45 +9,31 @@ use crate::util;
 pub struct NucleiAdapter;
 
 /// nuclei JSONL output structure (one JSON object per finding).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 #[allow(dead_code)]
 struct NucleiResult {
-    #[serde(default)]
-    template_id: String,
-    #[serde(default)]
-    template_name: String,
-    #[serde(default, rename = "type")]
+    #[serde(rename = "type")]
     result_type: String,
-    #[serde(default)]
-    host: String,
-    #[serde(default, rename = "matched")]
+    #[serde(rename = "matched")]
     matched_at: String,
-    #[serde(default)]
-    severity: String,
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    description: String,
-    #[serde(default)]
-    extracted_results: Vec<String>,
-    #[serde(default)]
-    matcher_name: String,
-    #[serde(default)]
-    request: String,
-    #[serde(default)]
-    response: String,
-    #[serde(default)]
-    curl_command: String,
-    #[serde(default)]
-    ip: String,
-    #[serde(default)]
-    timestamp: String,
-    #[serde(default)]
     #[serde(rename = "cwe")]
     cwe_id: String,
-    #[serde(default)]
     #[serde(rename = "reference")]
     references: Vec<String>,
+    template_id: String,
+    template_name: String,
+    host: String,
+    severity: String,
+    name: String,
+    description: String,
+    extracted_results: Vec<String>,
+    matcher_name: String,
+    request: String,
+    response: String,
+    curl_command: String,
+    ip: String,
+    timestamp: String,
 }
 
 #[async_trait]

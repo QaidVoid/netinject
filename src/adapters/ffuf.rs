@@ -14,34 +14,27 @@ pub struct FfufAdapter;
 /// Derived from ffuf source: pkg/ffuf/interfaces.go Result struct.
 /// The `input` field maps keyword names (e.g., "FUZZ") to base64-encoded byte values.
 /// The `duration` field is in nanoseconds (Go's time.Duration).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 #[allow(dead_code)]
 struct FfufResult {
-    #[serde(default)]
-    input: HashMap<String, String>,
-    #[serde(default)]
-    position: u64,
-    #[serde(default, rename = "status")]
+    #[serde(rename = "status")]
     status_code: i64,
-    #[serde(default, rename = "length")]
+    #[serde(rename = "length")]
     content_length: i64,
-    #[serde(default, rename = "words")]
+    #[serde(rename = "words")]
     content_words: i64,
-    #[serde(default, rename = "lines")]
+    #[serde(rename = "lines")]
     content_lines: i64,
-    #[serde(default, rename = "content-type")]
+    #[serde(rename = "content-type")]
     content_type: String,
-    #[serde(default)]
+    input: HashMap<String, String>,
+    position: u64,
     redirectlocation: String,
-    #[serde(default)]
     url: String,
-    #[serde(default)]
     duration: i64,
-    #[serde(default)]
     scraper: HashMap<String, Vec<String>>,
-    #[serde(default)]
     resultfile: String,
-    #[serde(default)]
     host: String,
 }
 
