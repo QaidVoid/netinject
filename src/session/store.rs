@@ -1,6 +1,7 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use super::{Session, SessionStatus};
+use crate::baseline::BaselineSnapshot;
 use crate::finding::Finding;
 
 /// SQLite-backed session store.
@@ -184,6 +185,108 @@ impl SessionStore {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(findings)
     }
+
+    /// Get a single session by ID.
+    pub fn get_session(&self, id: uuid::Uuid) -> Result<Session> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, created_at, target, pipeline, config, status, duration_ms
+             FROM sessions WHERE id = ?1",
+        )?;
+        let session = stmt
+            .query_row([id.to_string()], |row| {
+                Ok(Session {
+                    id: uuid::Uuid::parse_str(row.get::<_, String>(0).unwrap().as_str()).unwrap(),
+                    created_at: row.get::<_, String>(1).unwrap().parse().unwrap(),
+                    target: row.get(2).unwrap(),
+                    pipeline: row.get(3).unwrap(),
+                    config_snapshot: row.get(4).unwrap(),
+                    status: match row.get::<_, String>(5).unwrap().as_str() {
+                        "running" => SessionStatus::Running,
+                        "completed" => SessionStatus::Completed,
+                        "failed" => SessionStatus::Failed,
+                        _ => SessionStatus::Failed,
+                    },
+                    duration_ms: row.get(6).unwrap(),
+                })
+            })
+            .context("session not found")?;
+        Ok(session)
+    }
+
+    /// Store a baseline snapshot.
+    pub fn insert_baseline(&self, baseline: &BaselineSnapshot) -> Result<()> {
+        let snapshot_json = serde_json::to_string(&baseline.entries)?;
+        self.conn.execute(
+            "INSERT INTO baselines (id, created_at, target, spec_hash, snapshot)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            (
+                baseline.id.to_string(),
+                baseline.created_at.to_rfc3339(),
+                &baseline.target,
+                &baseline.spec_hash,
+                &snapshot_json,
+            ),
+        )?;
+        Ok(())
+    }
+
+    /// List all baselines, newest first.
+    pub fn list_baselines(&self) -> Result<Vec<BaselineSnapshot>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, created_at, target, spec_hash, snapshot
+             FROM baselines ORDER BY created_at DESC",
+        )?;
+        let baselines = stmt
+            .query_map([], |row| {
+                let id_str: String = row.get(0).unwrap();
+                let created_str: String = row.get(1).unwrap();
+                let target: String = row.get(2).unwrap();
+                let spec_hash: String = row.get(3).unwrap();
+                let snapshot_json: String = row.get(4).unwrap();
+
+                let entries: Vec<crate::baseline::BaselineEntry> =
+                    serde_json::from_str(&snapshot_json).unwrap();
+
+                Ok(BaselineSnapshot {
+                    id: uuid::Uuid::parse_str(&id_str).unwrap(),
+                    created_at: created_str.parse().unwrap(),
+                    target,
+                    spec_hash,
+                    entries,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(baselines)
+    }
+
+    /// Get a single baseline by ID.
+    pub fn get_baseline(&self, id: uuid::Uuid) -> Result<BaselineSnapshot> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, created_at, target, spec_hash, snapshot
+             FROM baselines WHERE id = ?1",
+        )?;
+        let baseline = stmt
+            .query_row([id.to_string()], |row| {
+                let id_str: String = row.get(0).unwrap();
+                let created_str: String = row.get(1).unwrap();
+                let target: String = row.get(2).unwrap();
+                let spec_hash: String = row.get(3).unwrap();
+                let snapshot_json: String = row.get(4).unwrap();
+
+                let entries: Vec<crate::baseline::BaselineEntry> =
+                    serde_json::from_str(&snapshot_json).unwrap();
+
+                Ok(BaselineSnapshot {
+                    id: uuid::Uuid::parse_str(&id_str).unwrap(),
+                    created_at: created_str.parse().unwrap(),
+                    target,
+                    spec_hash,
+                    entries,
+                })
+            })
+            .context("baseline not found")?;
+        Ok(baseline)
+    }
 }
 
 fn parse_severity(s: &str) -> crate::finding::Severity {
@@ -253,5 +356,82 @@ mod tests {
         let findings = store.get_findings(session_id).unwrap();
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].source, "nuclei");
+    }
+
+    #[test]
+    fn test_get_session() {
+        let store = SessionStore::open_in_memory().unwrap();
+        let id = uuid::Uuid::new_v4();
+        let session = Session {
+            id,
+            created_at: chrono::Utc::now(),
+            target: "https://example.com".into(),
+            pipeline: Some("scan".into()),
+            config_snapshot: "{}".into(),
+            status: SessionStatus::Running,
+            duration_ms: None,
+        };
+        store.create_session(&session).unwrap();
+
+        let fetched = store.get_session(id).unwrap();
+        assert_eq!(fetched.target, "https://example.com");
+        assert_eq!(fetched.pipeline.unwrap(), "scan");
+    }
+
+    #[test]
+    fn test_get_session_not_found() {
+        let store = SessionStore::open_in_memory().unwrap();
+        assert!(store.get_session(uuid::Uuid::new_v4()).is_err());
+    }
+
+    #[test]
+    fn test_baseline_crud() {
+        use crate::baseline::{BaselineEntry, BaselineSnapshot};
+
+        let store = SessionStore::open_in_memory().unwrap();
+        let id = uuid::Uuid::new_v4();
+        let baseline = BaselineSnapshot {
+            id,
+            created_at: chrono::Utc::now(),
+            target: "https://api.example.com".into(),
+            spec_hash: "abc123".into(),
+            entries: vec![
+                BaselineEntry {
+                    method: "GET".into(),
+                    path: "/users".into(),
+                    status_code: 200,
+                    headers: vec![("content-type".into(), "application/json".into())],
+                    body_hash: "hash1".into(),
+                    body_schema_hash: None,
+                    response_time_ms: 45,
+                },
+                BaselineEntry {
+                    method: "GET".into(),
+                    path: "/admin".into(),
+                    status_code: 403,
+                    headers: vec![],
+                    body_hash: "hash2".into(),
+                    body_schema_hash: None,
+                    response_time_ms: 12,
+                },
+            ],
+        };
+
+        store.insert_baseline(&baseline).unwrap();
+
+        let listed = store.list_baselines().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].target, "https://api.example.com");
+        assert_eq!(listed[0].entries.len(), 2);
+
+        let fetched = store.get_baseline(id).unwrap();
+        assert_eq!(fetched.entries[0].path, "/users");
+        assert_eq!(fetched.entries[1].status_code, 403);
+    }
+
+    #[test]
+    fn test_get_baseline_not_found() {
+        let store = SessionStore::open_in_memory().unwrap();
+        assert!(store.get_baseline(uuid::Uuid::new_v4()).is_err());
     }
 }

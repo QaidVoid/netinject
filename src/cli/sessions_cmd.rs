@@ -1,26 +1,31 @@
 use anyhow::Result;
 
 use crate::cli::args::{Cli, SessionCommands};
+use crate::cli::helpers;
+use crate::report;
 
-pub async fn run(_cli: &Cli, subcommand: &SessionCommands) -> Result<()> {
+pub async fn run(cli: &Cli, subcommand: &SessionCommands) -> Result<()> {
     match subcommand {
         SessionCommands::List => {
-            let store = open_default_store()?;
+            let home_dir = helpers::ensure_home_dir()?;
+            let store = helpers::open_session_store(&home_dir)?;
             let sessions = store.list_sessions()?;
             if sessions.is_empty() {
                 println!("No sessions found.");
                 return Ok(());
             }
 
-            let rows: Vec<(String, String, String, String)> = sessions
+            let rows: Vec<(String, String, String, String, String)> = sessions
                 .iter()
                 .map(|s| {
-                    (
-                        s.id.to_string()[..8].to_string(),
-                        s.created_at.format("%Y-%m-%d %H:%M").to_string(),
-                        s.target.clone(),
-                        s.status.to_string(),
-                    )
+                    let short_id = &s.id.to_string()[..8];
+                    let time = s.created_at.format("%Y-%m-%d %H:%M").to_string();
+                    let pipeline = s.pipeline.clone().unwrap_or_else(|| "-".into());
+                    let duration = s
+                        .duration_ms
+                        .map(|d| format!("{:.1}s", d as f64 / 1000.0))
+                        .unwrap_or_else(|| "-".into());
+                    (short_id.into(), time, s.target.clone(), pipeline, duration)
                 })
                 .collect();
 
@@ -29,30 +34,146 @@ pub async fn run(_cli: &Cli, subcommand: &SessionCommands) -> Result<()> {
             println!("{table}");
         }
         SessionCommands::Show { id } => {
-            tracing::info!(session_id = %id, "showing session");
-            println!("Session show not yet implemented.");
+            let home_dir = helpers::ensure_home_dir()?;
+            let store = helpers::open_session_store(&home_dir)?;
+
+            let session_id = resolve_session_id(&store, id)
+                .ok_or_else(|| anyhow::anyhow!("session '{id}' not found"))?;
+            let session = store.get_session(session_id)?;
+            let findings = store.get_findings(session_id)?;
+
+            // Print session info
+            println!("Session: {}", session.id);
+            println!("Target:  {}", session.target);
+            println!("Status:  {}", session.status);
+            if let Some(ref p) = session.pipeline {
+                println!("Pipeline: {p}");
+            }
+            if let Some(d) = session.duration_ms {
+                println!("Duration: {:.1}s", d as f64 / 1000.0);
+            }
+            println!(
+                "Created: {}",
+                session.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+            );
+            println!();
+
+            if findings.is_empty() {
+                println!("No findings recorded.");
+                return Ok(());
+            }
+
+            // Output findings using the report system
+            let output = report::write_findings(&findings, cli.format)?;
+            print!("{output}");
         }
         SessionCommands::Diff { id_a, id_b } => {
-            tracing::info!("diffing sessions: {id_a} vs {id_b}");
-            println!("Session diff not yet implemented.");
+            let home_dir = helpers::ensure_home_dir()?;
+            let store = helpers::open_session_store(&home_dir)?;
+
+            let sid_a = resolve_session_id(&store, id_a)
+                .ok_or_else(|| anyhow::anyhow!("session '{id_a}' not found"))?;
+            let sid_b = resolve_session_id(&store, id_b)
+                .ok_or_else(|| anyhow::anyhow!("session '{id_b}' not found"))?;
+
+            let findings_a = store.get_findings(sid_a)?;
+            let findings_b = store.get_findings(sid_b)?;
+
+            println!("Comparing sessions:");
+            println!("  A: {} ({} findings)", id_a, findings_a.len());
+            println!("  B: {} ({} findings)", id_b, findings_b.len());
+            println!();
+
+            // Build URL sets for comparison
+            let urls_a: std::collections::HashSet<String> =
+                findings_a.iter().map(|f| f.url.clone()).collect();
+            let urls_b: std::collections::HashSet<String> =
+                findings_b.iter().map(|f| f.url.clone()).collect();
+
+            // New in B (not in A)
+            let new_urls: Vec<_> = urls_b.difference(&urls_a).collect();
+            // Removed from A (not in B)
+            let removed_urls: Vec<_> = urls_a.difference(&urls_b).collect();
+            // Common
+            let common_count = urls_a.intersection(&urls_b).count();
+
+            if !new_urls.is_empty() {
+                println!("New findings in B:");
+                for url in &new_urls {
+                    let finding = findings_b.iter().find(|f| &f.url == *url).unwrap();
+                    println!("  + [{}] {} {}", finding.severity, finding.source, url);
+                }
+            }
+
+            if !removed_urls.is_empty() {
+                println!("Findings removed in B:");
+                for url in &removed_urls {
+                    let finding = findings_a.iter().find(|f| &f.url == *url).unwrap();
+                    println!("  - [{}] {} {}", finding.severity, finding.source, url);
+                }
+            }
+
+            if new_urls.is_empty() && removed_urls.is_empty() {
+                println!("No differences between sessions ({common_count} common findings).");
+            } else {
+                println!(
+                    "\nSummary: +{} new, -{} removed, {common_count} unchanged",
+                    new_urls.len(),
+                    removed_urls.len()
+                );
+            }
         }
         SessionCommands::Export { id } => {
-            tracing::info!(session_id = %id, "exporting session");
-            println!("Session export not yet implemented.");
+            let home_dir = helpers::ensure_home_dir()?;
+            let store = helpers::open_session_store(&home_dir)?;
+
+            let session_id = resolve_session_id(&store, id)
+                .ok_or_else(|| anyhow::anyhow!("session '{id}' not found"))?;
+            let findings = store.get_findings(session_id)?;
+
+            if findings.is_empty() {
+                println!("No findings to export.");
+                return Ok(());
+            }
+
+            let output = report::write_findings(&findings, cli.format)?;
+
+            if let Some(ref path) = cli.output {
+                std::fs::write(path, &output)?;
+                println!("Exported {} findings to {path}", findings.len());
+            } else {
+                // Default: write to a file named by session id
+                let filename = format!("{id}-findings.jsonl");
+                std::fs::write(&filename, &output)?;
+                println!("Exported {} findings to {filename}", findings.len());
+            }
         }
     }
     Ok(())
 }
 
-fn open_default_store() -> Result<crate::session::store::SessionStore> {
-    let base_dir = dirs_home()?;
-    let db_path = base_dir.join("store.db");
-    crate::session::store::SessionStore::open(&db_path)
-}
+/// Resolve a session ID that may be a short prefix (8 chars) to a full UUID.
+fn resolve_session_id(store: &crate::session::store::SessionStore, id: &str) -> Option<uuid::Uuid> {
+    // Try parsing as full UUID first
+    if let Ok(uuid) = uuid::Uuid::parse_str(id)
+        && store.get_session(uuid).is_ok()
+    {
+        return Some(uuid);
+    }
 
-fn dirs_home() -> Result<std::path::PathBuf> {
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .map_err(|_| anyhow::anyhow!("cannot determine home directory"))?;
-    Ok(std::path::PathBuf::from(home).join(".netinject"))
+    // Try matching as a prefix
+    let sessions = store.list_sessions().ok()?;
+    let matches: Vec<_> = sessions
+        .iter()
+        .filter(|s| s.id.to_string().starts_with(id))
+        .collect();
+
+    match matches.len() {
+        1 => Some(matches[0].id),
+        0 => None,
+        _ => {
+            tracing::warn!("ambiguous session prefix '{id}', matches multiple sessions");
+            None
+        }
+    }
 }
