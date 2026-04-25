@@ -9,4 +9,5 @@ pub mod report;
 pub mod scope;
 pub mod session;
 pub mod spec;
+pub mod ui;
 pub mod util;

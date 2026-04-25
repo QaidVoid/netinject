@@ -3,6 +3,12 @@ use clap::Parser;
 fn main() -> anyhow::Result<()> {
     let cli = netinject::cli::args::Cli::parse();
 
+    // Respect --no-color and NO_COLOR environment variable
+    if cli.no_color || std::env::var("NO_COLOR").is_ok() {
+        console::set_colors_enabled(false);
+        console::set_colors_enabled_stderr(false);
+    }
+
     // Initialize tracing
     if cli.verbose {
         tracing_subscriber::fmt()
@@ -45,6 +51,14 @@ async fn async_main(cli: &netinject::cli::args::Cli) -> anyhow::Result<()> {
             netinject::cli::replay_cmd::run(cli, session_id, modify.as_ref()).await
         }
         Commands::Init { name } => Ok(netinject::cli::init_cmd::run(cli, name.as_deref())?),
+        Commands::Completions { shell } => {
+            use clap::CommandFactory;
+            use clap_complete::generate;
+            let mut cmd = netinject::cli::args::Cli::command();
+            let name = cmd.get_name().to_string();
+            generate(*shell, &mut cmd, name, &mut std::io::stdout());
+            Ok(())
+        }
         Commands::Check => Ok(netinject::cli::check_cmd::run(cli)?),
     }
 }

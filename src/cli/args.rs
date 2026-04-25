@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use clap_complete::Shell;
 
 use crate::report::OutputFormat;
 
@@ -38,6 +39,10 @@ pub struct Cli {
     /// Only show findings, suppress progress
     #[arg(long, global = true)]
     pub quiet: bool,
+
+    /// Disable colored output
+    #[arg(long, global = true)]
+    pub no_color: bool,
 
     /// Show what would be run without executing
     #[arg(long, global = true)]
@@ -111,6 +116,12 @@ pub enum Commands {
         /// Project name
         #[arg(long)]
         name: Option<String>,
+    },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        shell: Shell,
     },
 
     /// Verify all required tools are installed
