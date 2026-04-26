@@ -26,7 +26,13 @@ Make sure at least `httpx` and `nuclei` are available.
 
 ## 3. Run a Quick Scan
 
-Single-target vulnerability scan:
+netinject auto-discovers `netinject.toml` in the current directory, so you don't need to repeat the target URL:
+
+```bash
+netinject scan
+```
+
+Or override the target on the command line:
 
 ```bash
 netinject scan --target https://api.staging.example.com
@@ -37,7 +43,7 @@ netinject scan --target https://api.staging.example.com
 Discover live endpoints and technologies:
 
 ```bash
-netinject recon --target https://api.staging.example.com
+netinject recon
 ```
 
 ## 5. Run a Full Pipeline
@@ -45,13 +51,13 @@ netinject recon --target https://api.staging.example.com
 Execute a multi-step pipeline (recon then scan):
 
 ```bash
-netinject run --target https://api.staging.example.com --pipeline full-api-scan
+netinject run
 ```
 
 Preview what would execute without actually running anything:
 
 ```bash
-netinject run --target https://api.staging.example.com --dry-run
+netinject run --dry-run
 ```
 
 ## 6. View Sessions

@@ -102,7 +102,9 @@ pub fn run(_cli: &Cli, name: Option<&str>) -> Result<()> {
     println!("  1. Edit netinject.toml with your target and scope");
     println!("  2. Add your OpenAPI spec file and update the 'spec' path");
     println!("  3. Run 'netinject check' to verify tool installations");
-    println!("  4. Run 'netinject run --pipeline full-api-scan' to start testing");
+    println!("  4. Run 'netinject run' to start testing");
+    println!();
+    println!("Config is auto-discovered from the current directory.");
 
     Ok(())
 }

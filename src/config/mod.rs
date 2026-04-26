@@ -197,6 +197,23 @@ impl Default for RegressionConfig {
     }
 }
 
+/// Default config file name to auto-discover.
+const DEFAULT_CONFIG_FILE: &str = "netinject.toml";
+
+/// Search for a config file in the current directory and parent directories.
+/// Returns the first `netinject.toml` found, or `None`.
+fn discover_config_file() -> Option<std::path::PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    let mut dir = cwd.as_path();
+    loop {
+        let candidate = dir.join(DEFAULT_CONFIG_FILE);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        dir = dir.parent()?;
+    }
+}
+
 /// Load config from a TOML file.
 pub fn load_config(path: &Path) -> Result<AppConfig, ConfigError> {
     let content = std::fs::read_to_string(path)?;
@@ -204,14 +221,24 @@ pub fn load_config(path: &Path) -> Result<AppConfig, ConfigError> {
     Ok(config)
 }
 
-/// Resolve config with precedence: CLI flags > project config > user config > defaults.
+/// Resolve config with precedence: CLI flags > discovered/project config > defaults.
+///
+/// Config file resolution order:
+/// 1. Explicit `--config` path (if provided)
+/// 2. `netinject.toml` in current directory (or nearest parent)
+/// 3. Built-in defaults
 pub fn resolve_config(
     cli_target: Option<&str>,
     cli_spec: Option<&str>,
     project_config: Option<&Path>,
 ) -> Result<AppConfig, ConfigError> {
-    let mut config = if let Some(path) = project_config {
-        load_config(path)?
+    let config_path = project_config
+        .map(|p| p.to_path_buf())
+        .or_else(discover_config_file);
+
+    let mut config = if let Some(path) = config_path {
+        tracing::debug!(path = %path.display(), "loading config");
+        load_config(&path)?
     } else {
         AppConfig::default()
     };
@@ -238,5 +265,86 @@ pub fn build_scope_checker(config: &AppConfig) -> Result<ScopeChecker, ConfigErr
         Ok(ScopeChecker::allow_all())
     } else {
         ScopeChecker::new(&config.scope.include, &config.scope.exclude).map_err(ConfigError::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_load_config_basic() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("netinject.toml");
+        fs::write(
+            &config_path,
+            "[project]\nname = \"my-api\"\ntarget = \"https://api.example.com\"\n",
+        )
+        .unwrap();
+
+        let cfg = load_config(&config_path).unwrap();
+        assert_eq!(cfg.project.name.as_deref(), Some("my-api"));
+        assert_eq!(
+            cfg.project.target.as_deref(),
+            Some("https://api.example.com")
+        );
+    }
+
+    #[test]
+    fn test_resolve_config_auto_discovers_from_cwd_tree() {
+        // The project repo root has netinject.toml — resolve_config should find it
+        let cfg = resolve_config(None, None, None).unwrap();
+        assert!(
+            cfg.project.target.is_some(),
+            "expected auto-discovery to find netinject.toml in a parent directory"
+        );
+    }
+
+    #[test]
+    fn test_resolve_config_explicit_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("netinject.toml");
+        fs::write(
+            &config_path,
+            "[project]\nname = \"my-api\"\ntarget = \"https://api.example.com\"\n",
+        )
+        .unwrap();
+
+        let cfg = resolve_config(None, None, Some(&config_path)).unwrap();
+        assert_eq!(cfg.project.name.as_deref(), Some("my-api"));
+        assert_eq!(
+            cfg.project.target.as_deref(),
+            Some("https://api.example.com")
+        );
+    }
+
+    #[test]
+    fn test_resolve_config_cli_overrides_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("netinject.toml");
+        fs::write(
+            &config_path,
+            "[project]\ntarget = \"https://file.example.com\"\n",
+        )
+        .unwrap();
+
+        let cfg =
+            resolve_config(Some("https://cli.example.com"), None, Some(&config_path)).unwrap();
+        assert_eq!(
+            cfg.project.target.as_deref(),
+            Some("https://cli.example.com")
+        );
+    }
+
+    #[test]
+    fn test_resolve_config_explicit_overrides_discovery() {
+        // When --config is provided, it takes precedence over auto-discovery
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("custom.toml");
+        fs::write(&config_path, "[project]\nname = \"explicit\"\n").unwrap();
+
+        let cfg = resolve_config(None, None, Some(&config_path)).unwrap();
+        assert_eq!(cfg.project.name.as_deref(), Some("explicit"));
     }
 }

@@ -8,7 +8,7 @@ use crate::report::OutputFormat;
 #[command(about = "Lightweight API security testing orchestrator")]
 #[command(version)]
 pub struct Cli {
-    /// Path to config file
+    /// Path to config file (default: auto-discover netinject.toml)
     #[arg(long, global = true)]
     pub config: Option<String>,
 

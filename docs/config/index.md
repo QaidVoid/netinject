@@ -15,8 +15,20 @@ Creates a `netinject.toml` in the current directory with sensible defaults.
 Settings are resolved in this order, with later sources overriding earlier ones:
 
 1. **Defaults** built into netinject
-2. **Project config** (`netinject.toml` in the working directory)
-3. **CLI flags** (`--target`, `--auth`, etc.)
+2. **Auto-discovered config** (`netinject.toml` found by walking up from the current directory)
+3. **Explicit config** (`--config path/to/custom.toml`)
+4. **CLI flags** (`--target`, `--auth`, etc.)
+
+### Auto-Discovery
+
+If no `--config` flag is provided, netinject automatically looks for `netinject.toml` in the current directory and its parent directories (similar to `.gitignore`). This means you can run commands from any subdirectory of your project:
+
+```bash
+netinject init            # creates netinject.toml in current dir
+netinject check           # auto-discovers netinject.toml
+netinject scan            # reads target from discovered config
+netinject run             # runs full-api-scan pipeline from config
+```
 
 ## Config Structure
 
